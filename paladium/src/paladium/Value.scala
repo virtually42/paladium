@@ -1,6 +1,7 @@
 package paladium
 
 enum Value[A]:
+  case Var(id: String, data: A)
   case Lit(data: A)
   case Const(n: Int)
   case Add(left: Value[A], right: Value[A])
@@ -9,6 +10,7 @@ enum Value[A]:
   case Div(left: Value[A], right: Value[A])
   case Pow(base: Value[A], exp: Value[A])
   case Neg(value: Value[A])
+  case Log(value: Value[A])
 
   def +(other: Value[A]): Value[A] = Add(this, other)
   def -(other: Value[A]): Value[A] = Sub(this, other)
@@ -17,9 +19,11 @@ enum Value[A]:
   def **(exp: Value[A]): Value[A] = Pow(this, exp)
   def pow(exp: Value[A]): Value[A] = Pow(this, exp)
   def unary_- : Value[A] = Neg(this)
+  def log: Value[A] = Log(this)
 
   def eval(using num: NumberLike[A]): A =
     this match
+      case Var(_, data)     => data
       case Lit(data)        => data
       case Const(n)         => num.fromInt(n)
       case Add(left, right) => num.plus(left.eval, right.eval)
@@ -28,7 +32,9 @@ enum Value[A]:
       case Div(left, right) => num.div(left.eval, right.eval)
       case Pow(base, exp)   => num.pow(base.eval, exp.eval)
       case Neg(value)       => num.minus(num.fromInt(0), value.eval)
+      case Log(value)       => num.log(value.eval)
 
 object Value:
   def apply[A](data: A): Value[A] = Lit(data)
   def const[A](n: Int): Value[A] = Const(n)
+  def variable[A](id: String, data: A): Value[A] = Var(id, data)

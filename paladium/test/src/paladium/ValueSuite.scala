@@ -125,6 +125,7 @@ class ValueSuite extends munit.FunSuite:
       case Value.Div(l, r)     => containsConst(l) || containsConst(r)
       case Value.Pow(b, e)     => containsConst(b) || containsConst(e)
       case Value.Neg(v)        => containsConst(v)
+      case Value.Var(_, _)     => false
       case Value.Lit(_)        => false
 
     assert(containsConst(expr), "Expression should contain Const nodes")

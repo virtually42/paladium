@@ -6,6 +6,7 @@ trait NumberLike[A]:
   def times(x: A, y: A): A
   def div(x: A, y: A): A
   def pow(x: A, exp: A): A
+  def log(x: A): A
   def fromInt(n: Int): A
 
 object NumberLike:
@@ -15,6 +16,7 @@ object NumberLike:
     def times(x: Double, y: Double): Double = x * y
     def div(x: Double, y: Double): Double = x / y
     def pow(x: Double, exp: Double): Double = math.pow(x, exp)
+    def log(x: Double): Double = math.log(x)
     def fromInt(n: Int): Double = n.toDouble
 
   given NumberLike[Float] with
@@ -23,4 +25,5 @@ object NumberLike:
     def times(x: Float, y: Float): Float = x * y
     def div(x: Float, y: Float): Float = x / y
     def pow(x: Float, exp: Float): Float = math.pow(x.toDouble, exp.toDouble).toFloat
+    def log(x: Float): Float = math.log(x.toDouble).toFloat
     def fromInt(n: Int): Float = n.toFloat

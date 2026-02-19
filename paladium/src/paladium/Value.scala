@@ -10,6 +10,7 @@ enum Value[A]:
   case Div(left: Value[A], right: Value[A])
   case Pow(base: Value[A], exp: Value[A])
   case Neg(value: Value[A])
+  case Log(value: Value[A])
 
   def +(other: Value[A]): Value[A] = Add(this, other)
   def -(other: Value[A]): Value[A] = Sub(this, other)
@@ -18,6 +19,7 @@ enum Value[A]:
   def **(exp: Value[A]): Value[A] = Pow(this, exp)
   def pow(exp: Value[A]): Value[A] = Pow(this, exp)
   def unary_- : Value[A] = Neg(this)
+  def log: Value[A] = Log(this)
 
   def eval(using num: NumberLike[A]): A =
     this match
@@ -30,6 +32,7 @@ enum Value[A]:
       case Div(left, right) => num.div(left.eval, right.eval)
       case Pow(base, exp)   => num.pow(base.eval, exp.eval)
       case Neg(value)       => num.minus(num.fromInt(0), value.eval)
+      case Log(value)       => num.log(value.eval)
 
 object Value:
   def apply[A](data: A): Value[A] = Lit(data)

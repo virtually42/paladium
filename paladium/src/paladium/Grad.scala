@@ -69,6 +69,11 @@ object Grad:
         val negUpstream = num.minus(num.fromInt(0), upstream)
         backwardAccum(v, negUpstream, accum)
 
+      case Log(v) =>
+        // d/dv log(v) = 1/v
+        val vGrad = num.div(upstream, v.eval)
+        backwardAccum(v, vGrad, accum)
+
   object syntax:
     extension [A: NumberLike](expr: Value[A])
       def backward: Map[String, A] = Grad.backward(expr)

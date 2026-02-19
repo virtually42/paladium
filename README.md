@@ -555,3 +555,479 @@ The DSL uses two Scala features:
 2. **Scala 3 Conversion** — `given Conversion[A, Value[A]]` allows implicit promotion of `A` to `Value.Lit(a)`
 
 Both extensions require a `NumberLike[A]` instance, so they work with any numeric type you've implemented support for.
+
+---
+
+## SymbolicGrad — Building Gradient Expressions
+
+### The Problem with Numerical Gradients
+
+The `Grad` module computes numerical gradient values immediately:
+
+```scala
+val x = Value.variable("x", 2.0)
+val expr = x * x
+Grad.backward(expr)  // Map("x" -> 4.0) — a concrete number
+```
+
+This works well for CPU execution, but has limitations:
+
+1. **GPU/CUDA execution**: GPUs are efficient when you batch operations. Computing gradients one-by-one defeats the purpose.
+2. **Graph optimization**: You can't simplify or fuse operations on numbers that are already computed.
+3. **Code generation**: You can't emit optimized code from a number.
+4. **Inspection**: You can't see *how* the gradient is computed, only the final value.
+
+### The Solution: Symbolic Gradients
+
+`SymbolicGrad` builds gradient *expressions* instead of computing values:
+
+```scala
+import SymbolicGrad.syntax.*
+
+val x = Value.variable("x", 2.0)
+val expr = x * x
+
+// Numerical: gives you a number
+Grad.backward(expr)           // Map("x" -> 4.0)
+
+// Symbolic: gives you an expression tree
+SymbolicGrad.backward(expr)   // Map("x" -> Add(Const(0), Add(Mul(Const(1), Var("x")), Mul(Const(1), Var("x")))))
+```
+
+The symbolic gradient for `x` is an expression that, when evaluated, gives 4.0:
+
+```scala
+val gradExpr = SymbolicGrad.backward(expr)("x")
+gradExpr.eval  // 4.0
+```
+
+### How It Works
+
+The key difference is in what flows through the backward pass:
+
+| Aspect | `Grad` | `SymbolicGrad` |
+|--------|--------|----------------|
+| Upstream type | `A` (a number) | `Value[A]` (an expression) |
+| Accumulator | `Map[String, A]` | `Map[String, Value[A]]` |
+| Multiplication | `num.times(upstream, r.eval)` | `Mul(upstream, r)` |
+| Result | Computed values | Expression trees |
+
+Compare the `Mul` case in both implementations:
+
+```scala
+// Grad — computes immediately
+case Mul(l, r) =>
+  val a1 = backwardAccum(l, num.times(upstream, r.eval), accum)  // upstream * 3.0
+  backwardAccum(r, num.times(upstream, l.eval), a1)              // upstream * 2.0
+
+// SymbolicGrad — builds expressions
+case Mul(l, r) =>
+  val a1 = backwardAccum(l, Mul(upstream, r), accum)  // Mul(upstream, Var("y"))
+  backwardAccum(r, Mul(upstream, l), a1)              // Mul(upstream, Var("x"))
+```
+
+### Why This Matters
+
+With symbolic gradients, you have two expression trees:
+
+```
+Forward Expression              Backward Expressions
+─────────────────              ────────────────────
+     Mul                       x: Mul(Const(1), Var("y"))
+    /   \                      y: Mul(Const(1), Var("x"))
+Var(x)  Var(y)
+```
+
+Both use the same `Value[A]` ADT, which means:
+
+1. **Same interpreter for both**: One `eval` implementation handles forward and backward
+2. **Optimization passes**: Simplify `Mul(Const(1), x)` → `x` works on both
+3. **Visualization**: Render both graphs with the same Mermaid/DOT generator
+4. **GPU compilation**: Lower both to CUDA kernels using the same compiler
+
+### The Interpreter Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Interpreters                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────┐  │
+│  │    eval     │  │  toMermaid  │  │    toCuda       │  │
+│  │  → A        │  │  → String   │  │  → CudaKernel   │  │
+│  └─────────────┘  └─────────────┘  └─────────────────┘  │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  Forward:   Value[A]  ──────────────────────────────►   │
+│                                                         │
+│  Backward:  Map[String, Value[A]]  ─────────────────►   │
+│             (from SymbolicGrad)                         │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### API Reference
+
+```scala
+// Compute symbolic gradients
+SymbolicGrad.backward(expr)   // Map[String, Value[A]]
+
+// With syntax extension
+import SymbolicGrad.syntax.*
+expr.symbolicBackward         // Map[String, Value[A]]
+
+// Evaluate a gradient expression
+val gradExprs = expr.symbolicBackward
+gradExprs("x").eval           // A — the numerical gradient value
+```
+
+### Example: Inspecting Gradient Structure
+
+```scala
+import paladium.*
+import SymbolicGrad.syntax.*
+
+val x = Value.variable("x", 2.0)
+val y = Value.variable("y", 3.0)
+val expr = x * y
+
+val grads = expr.symbolicBackward
+
+// The gradient for x is symbolically: upstream * y
+// Where upstream starts as Const(1)
+grads("x") match
+  case Value.Add(Value.Const(0), Value.Mul(Value.Const(1), Value.Var("y", _))) =>
+    println("Gradient for x is: 1 * y")
+```
+
+### Symbolic vs Numerical: When to Use Which
+
+| Use Case | Use `Grad` | Use `SymbolicGrad` |
+|----------|------------|-------------------|
+| Quick gradient check | ✓ | |
+| CPU training loop | ✓ | |
+| GPU/TPU execution | | ✓ |
+| Graph visualization | | ✓ |
+| Expression simplification | | ✓ |
+| Code generation | | ✓ |
+| Debugging gradient flow | | ✓ |
+
+---
+
+## The Chain Rule — An Intuitive Guide
+
+### Why the Chain Rule?
+
+The chain rule is the mathematical foundation of backpropagation. If you understand it intuitively, automatic differentiation becomes transparent.
+
+### Leibniz's Notation: The Fraction Intuition
+
+Leibniz's notation writes derivatives as fractions: dy/dx means "the change in y per unit change in x."
+
+#### The Basic Idea
+
+Imagine you're converting currencies:
+
+```
+100 USD → ? EUR → ? GBP
+```
+
+If 1 USD = 0.85 EUR and 1 EUR = 0.88 GBP, then:
+
+```
+dEUR/dUSD = 0.85    (euros per dollar)
+dGBP/dEUR = 0.88    (pounds per euro)
+
+dGBP/dUSD = dGBP/dEUR × dEUR/dUSD = 0.88 × 0.85 = 0.748
+```
+
+The chain rule says: **rates multiply**. If y changes 3× as fast as x, and z changes 2× as fast as y, then z changes 6× as fast as x.
+
+#### The Chain Rule Formula
+
+For a composition y = f(g(x)), where u = g(x) is the intermediate:
+
+```
+dy    dy   du
+── = ── × ──
+dx    du   dx
+```
+
+Read it as: "the rate of y with respect to x equals the rate of y with respect to u, times the rate of u with respect to x."
+
+The notation makes it look like fractions canceling — and while that's not *quite* what's happening mathematically, it's an excellent mental model.
+
+#### Worked Example: f(x) = (x²)³
+
+Let's find df/dx where f(x) = (x²)³.
+
+**Step 1: Identify the chain**
+
+```
+x  →  u = x²  →  f = u³
+```
+
+**Step 2: Find each derivative**
+
+```
+du
+── = 2x        (derivative of x²)
+dx
+
+df
+── = 3u²       (derivative of u³)
+du
+```
+
+**Step 3: Apply the chain rule**
+
+```
+df   df   du
+── = ── × ──
+dx   du   dx
+
+df
+── = 3u² × 2x
+dx
+
+   = 3(x²)² × 2x    (substitute u = x²)
+
+   = 6x⁵
+```
+
+**Verify**: f(x) = (x²)³ = x⁶, and d/dx(x⁶) = 6x⁵ ✓
+
+#### Multiple Variables: Partial Derivatives
+
+For functions of multiple variables, we use partial derivatives. If z = f(x, y):
+
+```
+∂z
+──    means "rate of change of z as x varies, holding y constant"
+∂x
+```
+
+For a chain like z = f(u, v) where u = g(x, y) and v = h(x, y):
+
+```
+∂z   ∂z   ∂u     ∂z   ∂v
+── = ── × ──  +  ── × ──
+∂x   ∂u   ∂x     ∂v   ∂x
+```
+
+This is the **multivariate chain rule**: sum over all paths from z to x.
+
+#### Backpropagation in Leibniz Notation
+
+Consider our earlier example: f(x, y) = x·y + x
+
+```
+        f = a + b
+           /     \
+      a = x·y    b = x
+```
+
+Using Leibniz notation, for each variable we sum over all paths:
+
+**Path analysis for x:**
+
+```
+Path 1: f → a → x
+        ∂f   ∂a
+        ── × ── = 1 × y = y
+        ∂a   ∂x
+
+Path 2: f → b → x
+        ∂f   ∂b
+        ── × ── = 1 × 1 = 1
+        ∂b   ∂x
+
+Total:  ∂f/∂x = y + 1
+```
+
+**Path analysis for y:**
+
+```
+Path 1: f → a → y
+        ∂f   ∂a
+        ── × ── = 1 × x = x
+        ∂a   ∂y
+
+Total:  ∂f/∂y = x
+```
+
+At x=2, y=3: ∂f/∂x = 3 + 1 = 4, ∂f/∂y = 2. This matches our earlier calculation.
+
+#### The "Upstream Gradient" Intuition
+
+In backpropagation, we propagate an "upstream gradient" from output to inputs. In Leibniz notation:
+
+```
+upstream = ∂Loss/∂(current node)
+```
+
+At each node, we multiply:
+
+```
+∂Loss       ∂Loss        ∂(current)
+─────────── = ─────────── × ──────────
+∂(child)     ∂(current)     ∂(child)
+             ↑               ↑
+          upstream       local derivative
+```
+
+This is why the code does `backwardAccum(child, upstream * localDerivative, accum)`.
+
+---
+
+## The Chain Rule — Formal Treatment
+
+### Lagrange's Notation
+
+Lagrange's notation uses primes for derivatives: f'(x) denotes the derivative of f at x.
+
+```
+f'(x) = lim[h→0] (f(x+h) - f(x)) / h
+```
+
+For higher derivatives: f''(x), f'''(x), or f⁽ⁿ⁾(x) for the nth derivative.
+
+### The Chain Rule (Single Variable)
+
+**Theorem**: Let f and g be differentiable functions. If h(x) = f(g(x)), then:
+
+```
+h'(x) = f'(g(x)) · g'(x)
+```
+
+**Proof sketch**: Using the limit definition:
+
+```
+h'(x) = lim[Δx→0] (h(x+Δx) - h(x)) / Δx
+
+      = lim[Δx→0] (f(g(x+Δx)) - f(g(x))) / Δx
+```
+
+Let Δu = g(x+Δx) - g(x). Then g(x+Δx) = g(x) + Δu, and:
+
+```
+      = lim[Δx→0] (f(g(x) + Δu) - f(g(x))) / Δx
+
+      = lim[Δx→0] [(f(g(x) + Δu) - f(g(x))) / Δu] · [Δu / Δx]
+
+      = f'(g(x)) · g'(x)
+```
+
+### The Multivariable Chain Rule
+
+**Theorem**: Let f: ℝⁿ → ℝ be differentiable, and let g₁, ..., gₙ: ℝᵐ → ℝ be differentiable. Define h: ℝᵐ → ℝ by:
+
+```
+h(x₁, ..., xₘ) = f(g₁(x₁, ..., xₘ), ..., gₙ(x₁, ..., xₘ))
+```
+
+Then for each variable xⱼ:
+
+```
+∂h        n    ∂f     ∂gᵢ
+───── =  Σ   ───── · ─────
+∂xⱼ     i=1  ∂gᵢ     ∂xⱼ
+```
+
+In vector notation with the gradient ∇f = (∂f/∂g₁, ..., ∂f/∂gₙ):
+
+```
+∂h
+───── = ∇f · (∂g₁/∂xⱼ, ..., ∂gₙ/∂xⱼ)
+∂xⱼ
+```
+
+### Formal Definition of Reverse-Mode Autodiff
+
+Let G = (V, E) be a directed acyclic graph representing a computation, where:
+- V = {v₁, ..., vₙ} are computational nodes
+- E ⊆ V × V are directed edges (vᵢ, vⱼ) meaning vⱼ depends on vᵢ
+- vₙ is the output node (loss function)
+
+For each node vᵢ, define the **adjoint**:
+
+```
+v̄ᵢ = ∂vₙ/∂vᵢ
+```
+
+The adjoint represents "how much the output changes per unit change in this node."
+
+**Reverse-mode algorithm**:
+
+1. **Initialize**: v̄ₙ = 1 (the output's derivative with respect to itself)
+
+2. **Backward pass**: Process nodes in reverse topological order. For each node vᵢ with children C(vᵢ):
+
+```
+v̄ᵢ = Σ[vⱼ ∈ C(vᵢ)] v̄ⱼ · (∂vⱼ/∂vᵢ)
+```
+
+3. **Result**: For input variables x₁, ..., xₖ, their adjoints x̄₁, ..., x̄ₖ are the desired gradients.
+
+### Complexity Analysis
+
+For a computation with:
+- n operations (nodes)
+- m inputs (variables)
+
+| Method | Time Complexity | Space Complexity |
+|--------|-----------------|------------------|
+| Symbolic differentiation | O(n) per input = O(nm) | O(n) per gradient |
+| Numerical (finite diff) | O(n) per input = O(nm) | O(1) |
+| Forward-mode autodiff | O(n) per input = O(nm) | O(n) |
+| **Reverse-mode autodiff** | **O(n) total** | O(n) |
+
+Reverse-mode computes *all* gradients in one backward pass, regardless of how many inputs exist. This is why it's preferred for neural networks (many parameters, scalar loss).
+
+### Jacobian and the Chain Rule
+
+For vector-valued functions, the chain rule generalizes to matrix multiplication.
+
+If f: ℝⁿ → ℝᵐ and g: ℝᵐ → ℝᵖ, with h = g ∘ f, then:
+
+```
+Jₕ(x) = Jg(f(x)) · Jf(x)
+```
+
+Where Jf is the m×n Jacobian matrix:
+
+```
+        ⎡ ∂f₁/∂x₁  ∂f₁/∂x₂  ...  ∂f₁/∂xₙ ⎤
+Jf(x) = ⎢ ∂f₂/∂x₁  ∂f₂/∂x₂  ...  ∂f₂/∂xₙ ⎥
+        ⎣   ...       ...    ...    ...   ⎦
+```
+
+In reverse-mode autodiff, we compute **vector-Jacobian products** (VJPs):
+
+```
+v̄ · Jf    (row vector times Jacobian)
+```
+
+This is efficient because we never form the full Jacobian — we compute the product directly.
+
+### Connection to Paladium
+
+In Paladium's `Grad.backward`:
+
+```scala
+case Mul(l, r) =>
+  val a1 = backwardAccum(l, num.times(upstream, r.eval), accum)
+  backwardAccum(r, num.times(upstream, l.eval), a1)
+```
+
+This implements:
+
+```
+∂f         ∂f      ∂(l·r)
+───── = ─────── · ─────── = upstream · r    (for left child)
+∂l      ∂(l·r)      ∂l
+
+∂f         ∂f      ∂(l·r)
+───── = ─────── · ─────── = upstream · l    (for right child)
+∂r      ∂(l·r)      ∂r
+```
+
+The `upstream` variable carries the adjoint (v̄) through the computation graph, accumulating gradients via the chain rule at each node.

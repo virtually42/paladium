@@ -3,10 +3,10 @@ package build
 import mill._, scalalib._
 
 object paladium extends ScalaModule {
-  def scalaVersion = "3.6.3"
-  def mvnDeps = Seq(mvn"com.lihaoyi::sourcecode:0.4.2")
+  def scalaVersion = "3.7.4"
+  def mvnDeps = Seq(mvn"com.lihaoyi::sourcecode:0.4.4")
 
   object test extends ScalaTests with TestModule.Munit {
-    def mvnDeps = super.mvnDeps() ++ Seq(mvn"org.scalameta::munit:1.0.0")
+    def mvnDeps = super.mvnDeps() ++ Seq(mvn"org.scalameta::munit:1.2.2")
   }
 }

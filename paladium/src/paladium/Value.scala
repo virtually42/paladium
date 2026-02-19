@@ -15,6 +15,7 @@ enum Value[A]:
   def *(other: Value[A]): Value[A] = Mul(this, other)
   def /(other: Value[A]): Value[A] = Div(this, other)
   def **(exp: Value[A]): Value[A] = Pow(this, exp)
+  def pow(exp: Value[A]): Value[A] = Pow(this, exp)
   def unary_- : Value[A] = Neg(this)
 
   def eval(using num: NumberLike[A]): A =

@@ -36,10 +36,16 @@ class ValueSuite extends munit.FunSuite:
     assertEquals((x / y).eval, 5.0)
   }
 
-  test("Pow evaluates correctly") {
+  test("Pow with ** evaluates correctly") {
     val x = Value(2.0)
     val y = Value(3.0)
     assertEquals((x ** y).eval, 8.0)
+  }
+
+  test("Pow with .pow evaluates correctly") {
+    val x = Value(2.0)
+    val y = Value(3.0)
+    assertEquals(x.pow(y).eval, 8.0)
   }
 
   test("Neg evaluates correctly") {

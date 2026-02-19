@@ -1,12 +1,81 @@
+//| mill-version: 1.0.6
+
 package build
 
-import mill._, scalalib._
+import mill.*, scalalib.*, scalajslib.*, scalajslib.api.*
+import deps.{Versions => V, Lihaoyi, Munit, Tapir, ScalaJsDom}
 
-object paladium extends ScalaModule {
-  def scalaVersion = "3.6.3"
-  def mvnDeps = Seq(mvn"com.lihaoyi::sourcecode:0.4.2")
+// =============================================================================
+// Common Traits (following tagless patterns)
+// =============================================================================
 
-  object test extends ScalaTests with TestModule.Munit {
-    def mvnDeps = super.mvnDeps() ++ Seq(mvn"org.scalameta::munit:1.0.0")
+trait CommonSettings extends ScalaModule {
+  def scalaVersion = V.scala
+}
+
+trait CommonTestConfig extends TestModule.Munit {
+  override def mvnDeps = super.mvnDeps() ++ Seq(Munit.munit)
+}
+
+trait Shared extends CrossScalaModule with PlatformScalaModule {
+  override def mvnDeps = super.mvnDeps() ++ Seq(Lihaoyi.sourcecode)
+}
+
+trait Js extends Shared with ScalaJSModule {
+  override def scalaJSVersion = V.scalaJS
+}
+
+lazy val scalaVersions = V.scala
+
+// =============================================================================
+// Cross-Platform Core Module: paladium
+// =============================================================================
+
+object paladium extends Module {
+
+  trait JvmModule extends Shared {
+    object test extends ScalaTests with CommonTestConfig
   }
+
+  object jvm extends Cross[JvmModule](scalaVersions)
+
+  trait JsModule extends Js {
+    object test extends ScalaJSTests with CommonTestConfig
+  }
+
+  object js extends Cross[JsModule](scalaVersions)
+}
+
+// =============================================================================
+// JVM-Only Web Server Module
+// =============================================================================
+
+object `web-server` extends CommonSettings {
+  def moduleDeps = Seq(paladium.jvm(scalaVersions))
+
+  override def mvnDeps = super.mvnDeps() ++ Seq(
+    Tapir.nettyServerSync,
+    Tapir.jsonCirce
+  )
+
+  object test extends ScalaTests with CommonTestConfig
+}
+
+// =============================================================================
+// Scala.js Web Frontend Module
+// =============================================================================
+
+object `web-frontend` extends CommonSettings with ScalaJSModule {
+  def scalaJSVersion = V.scalaJS
+  def moduleDeps = Seq(paladium.js(scalaVersions))
+
+  override def mvnDeps = super.mvnDeps() ++ Seq(
+    ScalaJsDom.dom,
+    Lihaoyi.sourcecode
+  )
+
+  // ES Module output for Vite integration
+  override def moduleKind = ModuleKind.ESModule
+
+  object test extends ScalaJSTests with CommonTestConfig
 }

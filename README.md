@@ -487,3 +487,71 @@ given NumberLike[BigDecimal] with
 ```
 
 Then all three layers work automatically with your type.
+
+---
+
+## DSL Extension — Concise Syntax
+
+The `Dsl` module provides ergonomic extensions for building expressions with less boilerplate.
+
+### Setup
+
+```scala
+import paladium.*
+import paladium.Dsl.{*, given}
+```
+
+### Automatic Variable Naming with `^` or `toVar`
+
+Instead of manually specifying variable names:
+
+```scala
+// Without DSL
+val x = Value.variable("x", 2.0)
+val y = Value.variable("y", 3.0)
+
+// With DSL — variable name captured automatically from val binding
+val x = 2.0.^      // Value.Var("x", 2.0)
+val y = 3.0.toVar  // Value.Var("y", 3.0)
+```
+
+The `^` operator symbolizes "lifting" a value into the expression DSL. Use `toVar` if you prefer explicit naming.
+
+### Implicit Number Promotion
+
+Raw numbers are automatically promoted to `Value.Lit`:
+
+```scala
+// Without DSL
+val expr = x * Value(2.0) + Value(1.0)
+
+// With DSL — numbers auto-promote
+val expr = x * 2.0 + 1.0
+```
+
+### Complete Example
+
+```scala
+import paladium.*
+import paladium.Dsl.{*, given}
+import paladium.AutoGrad.syntax.*
+
+val x = 2.0.^
+val y = 3.0.^
+
+// Clean expression syntax — no Value() wrappers needed
+val expr = x * x + 2.0 * y
+
+val Traced(value, grads) = expr.trace
+// value = 4 + 6 = 10
+// grads = Map("x" -> 4.0, "y" -> 2.0)
+```
+
+### How It Works
+
+The DSL uses two Scala features:
+
+1. **sourcecode library** — `sourcecode.Name` captures the name of the `val` binding at compile time
+2. **Scala 3 Conversion** — `given Conversion[A, Value[A]]` allows implicit promotion of `A` to `Value.Lit(a)`
+
+Both extensions require a `NumberLike[A]` instance, so they work with any numeric type you've implemented support for.

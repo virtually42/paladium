@@ -14,30 +14,42 @@ mill paladium.test.testOnly paladium.ValueSuite  # Run single suite
 
 ## Architecture
 
-Three-layer design for reverse-mode automatic differentiation:
+Interpreter pattern for reverse-mode automatic differentiation. The `Value[A]` ADT represents computations; multiple interpreters walk the tree for different purposes.
 
 ```
-┌─────────────────────────────────────────┐
-│  AutoGrad   (convenience layer)         │  expr.trace → Traced(value, grads)
-├─────────────────────────────────────────┤
-│  Grad       (differentiation)           │  Grad.backward(expr) → Map[String, A]
-├─────────────────────────────────────────┤
-│  Value      (expression tree)           │  Build & evaluate expressions
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  Interpreters                                           │
+│  • eval           → A                  (compute value)  │
+│  • Grad.backward  → Map[String, A]     (numerical grad) │
+│  • SymbolicGrad   → Map[String, Value[A]] (grad exprs)  │
+├─────────────────────────────────────────────────────────┤
+│  AutoGrad   (convenience layer)                         │
+│  expr.trace → Traced(value, grads)                      │
+├─────────────────────────────────────────────────────────┤
+│  Value[A]   (expression tree ADT)                       │
+│  Var | Lit | Const | Add | Sub | Mul | Div | Pow | Neg | Log │
+└─────────────────────────────────────────────────────────┘
 ```
 
-**Value** (`paladium/src/paladium/Value.scala`): Expression tree enum. Operations build tree nodes; `eval` walks the tree. Three value types:
+**Value** (`Value.scala`): Expression tree enum. Operations build tree nodes; `eval` walks the tree.
 - `Const(n: Int)` - structural constants (coefficients in formulas)
 - `Lit(data: A)` - concrete typed values
 - `Var(id, data)` - gradient-tracked variables
 
-**Grad** (`paladium/src/paladium/Grad.scala`): Reverse-mode autodiff via accumulator pattern. Walks tree backward applying chain rule.
+**Grad** (`Grad.scala`): Reverse-mode autodiff computing numerical gradients. Walks tree backward applying chain rule with accumulator pattern.
 
-**AutoGrad** (`paladium/src/paladium/AutoGrad.scala`): Bundles `eval` + `backward` into `Traced[A](value, grads)`.
+**SymbolicGrad** (`SymbolicGrad.scala`): Builds gradient *expressions* instead of computing values. Returns `Map[String, Value[A]]` for deferred execution, GPU compilation, or visualization.
 
-**NumberLike** (`paladium/src/paladium/NumberLike.scala`): Type-class for numeric operations. Implement this trait to support new numeric types.
+**AutoGrad** (`AutoGrad.scala`): Bundles `eval` + `backward` into `Traced[A](value, grads)`.
+
+**NumberLike** (`NumberLike.scala`): Typeclass for numeric operations. Implement to support new numeric types.
+
+**Dsl** (`Dsl.scala`): Ergonomic syntax extensions.
+- `val x = 2.0.^` creates `Var("x", 2.0)` with name captured from binding
+- Implicit `Conversion[A, Value[A]]` allows `x + 2.0` without wrapping
 
 ## Conventions
 
 - Extension methods live in nested `object syntax` (e.g., `import Grad.syntax.*`)
-- Tests use numerical gradient verification against finite differences
+- Tests verify gradients against finite differences
+- `Const` for structural integers in formulas; `Lit` for concrete typed data

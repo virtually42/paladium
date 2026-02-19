@@ -73,6 +73,56 @@ enum Value[A]:
   case Neg(value: Value[A])
 ```
 
+### Understanding Const vs Lit vs Var
+
+You might wonder: why is `Const` limited to `Int` while `Lit` holds any type `A`? This reflects a fundamental distinction in mathematical notation.
+
+**Structural constants (`Const`)**: The integers 0, 1, 2, 3... that appear in the *form* of mathematical expressions:
+
+- `2x + 1` — the 2 and 1 are structural
+- `x²` — the exponent 2 is structural
+- `3x² - 4x + 5` — the coefficients 3, 4, 5 are structural
+
+These are **exact**, **type-independent**, and part of the expression's shape. Whether you later evaluate as `Double`, `Float`, or `BigDecimal`, the formula `3x² - 4x + 5` has the same structure. The conversion to your numeric type happens at evaluation time via `NumberLike.fromInt`.
+
+**Literal values (`Lit`)**: Concrete values already in your target type. Use these when you have actual numeric data:
+
+```scala
+val measured = Value(3.14159)  // Lit(3.14159) — a Double you computed or measured
+```
+
+**Named variables (`Var`)**: Values you want to track for gradient computation:
+
+```scala
+val x = Value.variable("x", 2.0)  // Var("x", 2.0) — gradients will include "x"
+```
+
+**Why not `Const(n: Double)`?**
+
+In mathematics, you never write `3.14159 * r²` — you write `π * r²`. Named mathematical constants (π, e, √2) are kept symbolic, not approximated. A floating-point "constant" embedded in an expression is:
+
+- Imprecise — which `3.14159`? Truncated? Rounded?
+- Unrecognizable — symbolic simplification can't identify it as π
+- Not idiomatic — it mixes exact symbolic structure with inexact numerics
+
+If you need π or e, the proper approach is to add named constants:
+
+```scala
+// Future extension
+case object Pi extends Value[A]
+case object E extends Value[A]
+```
+
+Or treat them as parameters via `Var("pi", 3.14159265...)`.
+
+**Summary**:
+
+| Type | Purpose | Example |
+|------|---------|---------|
+| `Const(n: Int)` | Structural constants in formulas | `2` in `2x + 1` |
+| `Lit(data: A)` | Concrete values in your numeric type | Measured data, computed results |
+| `Var(id, data)` | Named values for gradient tracking | `x` in `∂f/∂x` |
+
 ### Evaluation: Walking the Tree
 
 To get a number out, we recursively evaluate:

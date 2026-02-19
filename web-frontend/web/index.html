@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paladium - Automatic Differentiation Visualizer</title>
+  <style>
+    :root {
+      --bg-color: #1a1a2e;
+      --text-color: #eaeaea;
+      --accent-color: #0f3460;
+      --highlight-color: #e94560;
+      --card-bg: #16213e;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+      color: var(--highlight-color);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .input-section {
+      background: var(--card-bg);
+      padding: 1.5rem;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+    }
+
+    .input-group {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: bold;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 0.75rem;
+      border: 2px solid var(--accent-color);
+      border-radius: 4px;
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-size: 1rem;
+      font-family: monospace;
+    }
+
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--highlight-color);
+    }
+
+    .variables-container {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .variable-input {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .variable-input input {
+      width: 80px;
+    }
+
+    button {
+      background: var(--highlight-color);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #c13350;
+    }
+
+    .results {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .result-card {
+      background: var(--card-bg);
+      padding: 1.5rem;
+      border-radius: 8px;
+    }
+
+    .result-card h3 {
+      margin-bottom: 1rem;
+      color: var(--highlight-color);
+    }
+
+    .gradient-list {
+      list-style: none;
+    }
+
+    .gradient-list li {
+      padding: 0.5rem;
+      background: var(--bg-color);
+      margin-bottom: 0.5rem;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+
+    #graph-container {
+      width: 100%;
+      min-height: 400px;
+      background: var(--bg-color);
+      border-radius: 4px;
+    }
+
+    #mermaid-container {
+      width: 100%;
+      min-height: 300px;
+      background: white;
+      border-radius: 4px;
+      padding: 1rem;
+    }
+
+    .value-display {
+      font-size: 2rem;
+      font-weight: bold;
+      text-align: center;
+      color: var(--highlight-color);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Paladium Visualizer</h1>
+
+    <div class="input-section">
+      <div class="input-group">
+        <label for="expression">Expression</label>
+        <input type="text" id="expression" value="x^2 + y^2" placeholder="e.g., x^2 + y*z">
+      </div>
+
+      <div class="input-group">
+        <label>Variable Values</label>
+        <div id="variables" class="variables-container">
+          <!-- Variable inputs will be dynamically added -->
+        </div>
+      </div>
+
+      <button id="evaluate">Evaluate & Visualize</button>
+    </div>
+
+    <div class="results">
+      <div class="result-card">
+        <h3>Result</h3>
+        <div id="result" class="value-display">-</div>
+      </div>
+
+      <div class="result-card">
+        <h3>Numerical Gradients</h3>
+        <ul id="gradients" class="gradient-list">
+          <!-- Gradients will be displayed here -->
+        </ul>
+      </div>
+
+      <div class="result-card">
+        <h3>Symbolic Gradients</h3>
+        <ul id="symbolic-gradients" class="gradient-list">
+          <!-- Symbolic gradients will be displayed here -->
+        </ul>
+      </div>
+
+      <div class="result-card" style="grid-column: 1 / -1;">
+        <h3>Expression Graph (Mermaid)</h3>
+        <div id="mermaid-container">
+          <pre class="mermaid" id="mermaid-graph"></pre>
+        </div>
+      </div>
+
+      <div class="result-card" style="grid-column: 1 / -1;">
+        <h3>Expression Graph (D3)</h3>
+        <div id="graph-container">
+          <svg id="d3-graph"></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

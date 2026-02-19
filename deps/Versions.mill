@@ -1,0 +1,20 @@
+package build.deps
+
+object Versions {
+
+  lazy val scala = "3.7.3"
+  lazy val scalaJS = "1.20.1"
+  lazy val munit = "1.2.1"
+
+  object Lihaoyi {
+    lazy val sourcecode = "0.4.4"
+  }
+
+  object Tapir {
+    lazy val tapir = "1.11.11"
+  }
+
+  object ScalaJs {
+    lazy val dom = "2.8.0"
+  }
+}

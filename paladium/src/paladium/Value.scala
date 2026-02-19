@@ -1,6 +1,7 @@
 package paladium
 
 enum Value[A]:
+  case Var(id: String, data: A)
   case Lit(data: A)
   case Const(n: Int)
   case Add(left: Value[A], right: Value[A])
@@ -20,6 +21,7 @@ enum Value[A]:
 
   def eval(using num: NumberLike[A]): A =
     this match
+      case Var(_, data)     => data
       case Lit(data)        => data
       case Const(n)         => num.fromInt(n)
       case Add(left, right) => num.plus(left.eval, right.eval)
@@ -32,3 +34,4 @@ enum Value[A]:
 object Value:
   def apply[A](data: A): Value[A] = Lit(data)
   def const[A](n: Int): Value[A] = Const(n)
+  def variable[A](id: String, data: A): Value[A] = Var(id, data)
